@@ -64,7 +64,7 @@
     "00000000",
     "00000000"
 ]
-'''
+
 hex_lines = [
     "03",
     "06",
@@ -82,9 +82,27 @@ hex_lines = [
     "2F",
     "32",
     "30"
+]'''
+hex_lines = [
+    "009ce117",
+    "0082b93f",
+    "00ff9fce",
+    "0073bd2b",
+    "00377b65",
+    "0058b86e",
+    "0000d114",
+    "00bb525b",
+    "00c9e7b9",
+    "00e4ed1c",
+    "00e3eba7",
+    "0004c2c6",
+    "0093faa4",
+    "00d14dd6",
+    "00ae6d38",
+    "0068476c"
 ]
 
 for line in hex_lines:
     # Convert hex to integer, then format as 32-bit binary
-    binary_str = format(int(line, 16), '006b')
+    binary_str = format(int(line, 16), '032b')
     print(binary_str)

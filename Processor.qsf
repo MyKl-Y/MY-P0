@@ -64,4 +64,5 @@ set_global_assignment -name TEXT_FILE main_rom.txt
 set_global_assignment -name TEXT_FILE cc_rom.txt
 set_global_assignment -name TEXT_FILE interrupt_rom.txt
 set_global_assignment -name TEXT_FILE sequencer_rom.txt
+set_global_assignment -name TEXT_FILE key_buffer_rom.txt
 set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top

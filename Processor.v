@@ -149,13 +149,106 @@ module regfile
 
 endmodule
 
+module timer_device
+	(
+		input clk, rst, inta_in,
+		output timer_int, inta_out,
+		output [31:0] data
+	);
+	
+	reg [31:0] reg1;
+	reg reg2, int_reg;
+	
+	wire reset, empty;
+	
+	assign timer_int = int_reg ? 1 : 1'bZ;
+	
+	assign inta_out = ~reset & inta_in & ~reg2;
+	
+	assign data = reg2 ? 32'b0 : 32'bZ;
+		
+	assign empty = reg1 < 32'h7d0;
+	
+	assign reset = ~empty & inta_in;
+	
+	always @(posedge clk or posedge rst) begin
+		if (rst) begin 
+			int_reg = 1'b0;
+			reg1 = 32'b0;
+			reg2 = 1'b0;
+		end else begin
+			int_reg = ~(empty | inta_in);
+			case ({reset, empty})
+				2'b00: reg1 = reg1;
+				2'b01: reg1 = reg1 + 1;
+				default: reg1 = 32'b0;
+			endcase
+			reg2 = reset;
+		end
+	end
+	
+endmodule
+
+module distance_tracker_device
+	(
+		input clk, rst, inta_in,
+		input [31:0] addr,
+		output tracker_int, inta_out,
+		output [31:0] data
+	);
+	
+	reg [31:0] reg1;
+	reg reg2, int_reg;
+	reg [3:0] reg3;
+	
+	reg [31:0] key_buffer_rom [0: 2**4 - 1];
+	
+	wire reset, empty, dout;
+	
+	assign tracker_int = int_reg ? 1 : 1'bZ;
+	
+	assign inta_out = ~reset & inta_in & ~reg2;
+	
+	assign dout = reg2;
+		
+	assign empty = reg1 < 32'h5d0;
+	
+	assign reset = ~empty & inta_in;
+	
+	assign data = ~dout & addr == 32'b1 ? key_buffer_rom[reg3-1] : dout ? 32'b1 : 32'bZ;
+	
+	initial begin
+		$readmemb("key_buffer_rom.txt", key_buffer_rom);
+	end
+	
+	always @(posedge clk or posedge rst) begin
+		if (rst) begin 
+			int_reg = 1'b0;
+			reg1 = 32'b0;
+			reg2 = 1'b0;
+			reg3 = 4'b0;
+		end else begin
+			int_reg = ~(empty | inta_in);
+			case ({reset, empty})
+				2'b00: reg1 = reg1;
+				2'b01: reg1 = reg1 + 1;
+				default: reg1 = 32'b0;
+			endcase
+			reg2 = reset;
+			reg3 = reset ? reg3 + 1 : reg3;
+		end
+	end
+	
+endmodule
+
+
 module Processor (input clk, rst );
     reg [31:0] PC, IR, MAR, A, B, DAR;
     reg [1:0] Cmp;
     reg IE;
 
     wire DrREG, DrMEM, DrALU, DrPC, DrOFF, LdPC, LdIR, LdMAR, LdA, LdB, LdCmp, WrREG, 
-         WrMEM, OPTest, ChkCmp, LdEnInt, IntAck, DrData, LdDAR;
+         WrMEM, OPTest, ChkCmp, LdEnInt, IntAck, DrData, LdDAR, OnInt;
     wire [1:0] RegSel;
     wire [2:0] ALUFunc;
     wire [3:0] RegNo;
@@ -168,11 +261,31 @@ module Processor (input clk, rst );
 	 assign IR_to_Ry = IR[23:20];
 	 assign IR_to_Rz = IR_to_OFF[3:0];
 	 assign IR_to_OFF = IR[19:0];
+	 
+	 wire [31:0] device_data;
+	 wire inta_from_timer, timer_int, inta_from_distance_tracker, distance_tracker_int;
+	 timer_device timer_device1(
+		.clk(clk),
+		.rst(rst),
+		.inta_in(IntAck),
+		.timer_int(timer_int),
+		.inta_out(inta_from_timer),
+		.data(device_data)
+	 );
+	 distance_tracker_device distance_tracker_device(
+		.clk(clk),
+		.rst(rst),
+		.inta_in(IntAck),
+		.addr(DAR),
+		.tracker_int(distance_tracker_int),
+		.inta_out(inta_from_distance_tracker),
+		.data(device_data)
+	 );
 
     micro_controller micro_controller1(
         .clk(clk),
         .rst(rst),
-        .OnInt('d0), // Interrupts Disabled for now, will be enabled later with devices
+        .OnInt(OnInt), // Interrupts Disabled for now, will be enabled later with devices
         .CmpOut(Cmp),
         .Rx(IR_to_Rx),
         .Ry(IR_to_Ry),
@@ -234,7 +347,7 @@ module Processor (input clk, rst );
         .func(ALUFunc),
         .out(FromALU)
     );
-
+	 
     initial begin
         PC = 32'h00000000;
         IR = 32'h00000000;
@@ -270,13 +383,14 @@ module Processor (input clk, rst );
 					2'b01: Cmp <= Bus == 'h0 ? {Opcode[1:1], 1'b1} : {Opcode[1:1], 1'b0};
 					2'b10: Cmp <= Bus == 'h0 ? {Opcode[1:1], 1'b1} : {Opcode[1:1], 1'b0};
 					2'b11: Cmp <= Bus == 'h0 ? {Opcode[1:1], 1'b1} : {Opcode[1:1], 1'b0};
-					default: Cmp <= 2'b00;
 				endcase
 			end
         if (LdDAR) DAR <= Bus;
-        if (LdEnInt) IE <= Bus;
+        if (LdEnInt) IE <= IntAck ? 0 : ~(IR_to_Ry[0]);
 		end
 		end
+		
+		assign OnInt = IE & (( timer_int ? 1 : distance_tracker_int ? 1 : 1'bZ ) | 0);
 
 		wire [31:0] extended_IR;
 		assign extended_IR = { {12{IR_to_OFF[19]}}, IR_to_OFF };
